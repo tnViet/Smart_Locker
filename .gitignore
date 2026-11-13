@@ -1,0 +1,40 @@
+# Bi mat: chi dua .env.example len, khong dua .env
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Django
+db.sqlite3
+staticfiles/
+media/
+*.log
+
+# Bo dem request_id cua tools/fake_esp32.py, rieng tung may
+tools/.fake_esp32_seq
+
+# Tai lieu cua ca nhom va ban nhap paper, khong can de code.
+# Tai lieu backend can doc nam o "backend docs/"
+docs/
+
+# File tam cua Word khi dang mo tai lieu
+~$*
+
+# IDE va he dieu hanh
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Cau hinh Claude Code cuc bo
+.claude/
