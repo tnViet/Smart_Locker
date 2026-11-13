@@ -1,0 +1,7 @@
+# Giu xuong dong LF ke ca tren Windows: code va .env chay trong container Linux
+* text=auto eol=lf
+# File chay tren Windows can CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.docx binary
