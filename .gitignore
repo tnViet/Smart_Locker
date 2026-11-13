@@ -23,8 +23,9 @@ media/
 tools/.fake_esp32_seq
 
 # Tai lieu cua ca nhom va ban nhap paper, khong can de code.
-# Tai lieu backend can doc nam o "backend docs/"
-docs/
+# Tai lieu backend can doc nam o "backend docs/". Chi bo thu muc docs o goc,
+# khong dung toi frontend/docs/
+/docs/
 
 # File tam cua Word khi dang mo tai lieu
 ~$*
