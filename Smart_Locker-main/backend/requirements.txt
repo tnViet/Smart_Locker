@@ -1,0 +1,5 @@
+Django>=4.2
+psycopg[binary]
+PyJWT
+requests
+django-cors-headers
