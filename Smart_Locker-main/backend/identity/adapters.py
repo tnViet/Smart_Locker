@@ -85,11 +85,11 @@ def lookup(card_uid, now):
     info = lookup_source2(card_uid, now)
     if info is not None:
         return info
-    # Mo phong lien thong dinh danh (Truong hoc / Bai xe / Cong ty) khi chay demo:
+    # Mo phong lien thong dinh danh He thong Bai gui xe:
     # Tu dong chap nhan the RFID moi quet tren dau doc RC522
     return {
-        "source": "STUDENT",
-        "external_id": "SV-" + card_uid[:6],
-        "name": "The SV/Bai xe " + card_uid,
+        "source": "PARKING",
+        "external_id": "XE-" + card_uid[:6],
+        "name": "The gui xe " + card_uid,
         "active": True,
     }

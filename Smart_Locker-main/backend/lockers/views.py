@@ -496,72 +496,27 @@ def scan(request):
                             session.save()
                         pickup = True
                     else:
+                        # He thong tich hop bai gui xe: Tinh thoi gian va phi su dung,
+                        # gop thang phi vao the gui xe (tinh tien luc lay xe) va mo tu ngay lap tuc!
                         duration_min = duration_minutes(session.occupied_at, now)
                         fee = compute_fee(duration_min, rule, user.source)
-                        if fee == 0:
-                            session.duration_min = duration_min
-                            session.fee = fee
-                            session.save()
-                            pickup = True
-                        elif prepared is None or prepared["session_id"] != session.id:
-                            # Buoc 5 chua chuan bi ma buoc 6 lai can: trang thai doi giua
-                            # chung. Tra SERVER_ERROR de firmware gui lai.
-                            raise RuntimeError("scan: khoan thu chua duoc chuan bi")
-                        elif not prepared["charged"]:
-                            # He thong ngoai loi, phien giu nguyen
-                            response = fail("PAYMENT_UNAVAILABLE")
-                        else:
-                            if prepared["payment_id"] is not None:
-                                # Quet lai the lan 2 khi dang cho thanh toan -> Gop phi vao tai khoan dinh danh (Truong hoc/Bai xe) va mo tu!
-                                payment = Payment.objects.filter(
-                                    id=prepared["payment_id"], state="PENDING", expires_at__gt=now
-                                ).first()
-                                if payment is not None:
-                                    payment.state = "PAID"
-                                    payment.paid_at = now
-                                    payment.save()
-                                session.payment_status = "PAID"
-                                if session.duration_min is None:
-                                    session.duration_min = duration_min
-                                if session.fee is None:
-                                    session.fee = fee
-                                session.save()
-                                pickup = True
-                            else:
-                                payment = Payment.objects.create(
-                                    session=session,
-                                    pay_code=prepared["pay_code"],
-                                    source=user.source,
-                                    amount=fee,
-                                    state="PENDING",
-                                    created_at=now,
-                                    expires_at=now + timedelta(seconds=settings.PAY_TIMEOUT_SEC),
-                                )
-                                session.payment_status = "PENDING"
-                                session.duration_min = duration_min
-                                session.fee = fee
-                                session.save()
-                                pay_timeout_sec = settings.PAY_TIMEOUT_SEC
-
-                                # qr theo BE 1.4
-                                if payment.source == "STUDENT":
-                                    pay_url = settings.SOURCE1_PAY_URL
-                                else:
-                                    pay_url = settings.SOURCE2_PAY_URL
-                                response = ok(
-                                    {
-                                        "action": "PAYMENT",
-                                        "session_id": session.id,
-                                        "compartment": comp.number,
-                                        "unlock_ms": 0,
-                                        "timeout_sec": 0,
-                                        "display": "",
-                                        "duration_min": duration_min,
-                                        "fee": payment.amount,
-                                        "qr": pay_url.rstrip("/") + "/P/" + payment.pay_code,
-                                        "pay_timeout_sec": pay_timeout_sec,
-                                    }
-                                )
+                        session.duration_min = duration_min
+                        session.fee = fee
+                        if fee > 0:
+                            pay_code = prepared["pay_code"] if (prepared is not None and prepared.get("pay_code")) else new_pay_code()
+                            Payment.objects.create(
+                                session=session,
+                                pay_code=pay_code,
+                                source=user.source,
+                                amount=fee,
+                                state="PAID",
+                                created_at=now,
+                                expires_at=now + timedelta(seconds=settings.PAY_TIMEOUT_SEC),
+                                paid_at=now,
+                            )
+                            session.payment_status = "PAID"
+                        session.save()
+                        pickup = True
 
                     if pickup:
                         state.start_releasing(session, now)

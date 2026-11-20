@@ -661,10 +661,10 @@ void runDepositFlow(int compartment, uint32_t sessionId, unsigned int unlockMs, 
   delay(2500);
 }
 
-// Quy trình LẤY ĐỒ (PICKUP):
-// 1. Mở đúng ngăn đã gửi -> Hiển thị thời gian & phí sử dụng
-// 2. Người dùng lấy đồ ra -> Cảm biến xác nhận đã lấy đồ (ITEM_OUT)
-// 3. Đóng cửa -> Giải phóng ngăn về FREE
+// Quy trình LẤY ĐỒ (PICKUP - GỘP PHÍ VÀO VÉ GỬI XE):
+// 1. Quét lại thẻ gửi xe -> Hệ thống tìm đúng ngăn đã gửi & mở khóa ngay lập tức (không chờ QR)
+// 2. Tính thời gian & phí sử dụng -> Hiển thị phí được cộng gộp vào thẻ bãi xe khi lấy xe
+// 3. Người dùng lấy đồ ra -> Cảm biến xác nhận đã lấy đồ (ITEM_OUT) -> Đóng cửa -> Giải phóng ngăn về FREE
 void runPickupFlow(int compartment, uint32_t sessionId, int durationMin, int fee, unsigned int unlockMs, unsigned int doorTimeoutSec) {
   int otherComp = (compartment == 1) ? 2 : 1;
   bool usePrimary = checkHasItem(compartment);
@@ -675,7 +675,7 @@ void runPickupFlow(int compartment, uint32_t sessionId, int durationMin, int fee
 
   char feeLine[24];
   snprintf(feeLine, sizeof(feeLine), "TG: %dp | Phi: %dd", durationMin, fee);
-  showStepScreen(title, feeLine, "Dang mo khoa tu...", "Moi lay do ra!");
+  showStepScreen(title, feeLine, "Gop phi vao the xe!", "Dang mo khoa tu...");
 
   // Kích xung 12V mở khóa LY-03 rồi ngắt điện ngay
   triggerUnlock(compartment, unlockMs);
@@ -708,7 +708,7 @@ void runPickupFlow(int compartment, uint32_t sessionId, int durationMin, int fee
     }
 
     if (curItem) {
-      showStepScreen(title, feeLine, "Moi lay do ra ngoai", "Cam bien: CON DO");
+      showStepScreen(title, feeLine, "Moi lay do ra ngoai", "Phi tinh khi lay xe");
     } else {
       unsigned long emptySec = (millis() - itemTakenMillis) / 1000;
       if ((doorWasOpenedByReed && curDoor && emptySec >= 1) || (emptySec >= 3)) {
@@ -731,7 +731,7 @@ void runPickupFlow(int compartment, uint32_t sessionId, int durationMin, int fee
   if (!finalHasItem) {
     activeSessionId[compartment] = 0;
     compStatus[compartment]      = "FREE";
-    showStepScreen(title, "DA LAY DO XONG!", feeLine, "Cam on & Hen gap lai");
+    showStepScreen(title, "DA LAY DO XONG!", feeLine, "Tinh tien khi lay xe");
   } else {
     showStepScreen(title, "Van con do trong tu", "Giu nguyen phien!", "");
   }
@@ -915,77 +915,12 @@ void processCardScan(const char* cardUid) {
   if (strcmp(action, "DEPOSIT") == 0) {
     runDepositFlow(compartment, sessionId, unlockMs, timeoutSec);
   }
-  // 2. LẤY ĐỒ: Tìm đúng ngăn đã gửi -> Mở tủ -> Hiển thị thời gian & phí -> Lấy đồ -> Giải phóng ngăn
-  else if (strcmp(action, "PICKUP") == 0) {
-    runPickupFlow(compartment, sessionId, durationMin, fee, unlockMs, timeoutSec);
-  }
-  // 3. CÓ PHÍ SỬ DỤNG: Hiển thị thời gian + phí -> Thanh toán QR hoặc Quét lại thẻ để gộp phí -> Mở tủ
-  else if (strcmp(action, "PAYMENT") == 0) {
-    const char* qr    = data["qr"] | "";
-    int payTimeoutSec = data["pay_timeout_sec"] | 120;
-
-    char title[24];
-    snprintf(title, sizeof(title), "PHI NGAN %d: %dd", compartment, fee);
-    char line1[24];
-    snprintf(line1, sizeof(line1), "Thoi gian: %d phut", durationMin);
-    showStepScreen(title, line1, "Quet lai the: Gop phi", "Hoac tra QR tren Web");
-
-    unsigned long payStart = millis();
-    unsigned long lastPoll = 0;
-    bool paidSuccess = false;
-
-    while ((millis() - payStart) < (unsigned long)payTimeoutSec * 1000) {
-      // A. Cho phép quẹt lại đúng thẻ đó lần 2 để GỘP PHÍ vào thẻ Sinh viên / Bãi xe và mở tủ ngay!
-      if ((millis() - payStart) > 1500) {
-        char secondUid[9];
-        if (pollRfidUid(secondUid)) {
-          Serial.printf("[PAYMENT] Quet the gop phi: %s\n", secondUid);
-          processCardScan(secondUid);
-          return;
-        }
-      }
-
-      // B. Kiểm tra trạng thái thanh toán QR (/payment/check) mỗi 2 giây
-      if (millis() - lastPoll >= PAYMENT_POLL_MS) {
-        lastPoll = millis();
-
-        char chkReqId[24];
-        char chkTime[32];
-        getNextRequestId(chkReqId, sizeof(chkReqId));
-        getDeviceTime(chkTime, sizeof(chkTime));
-
-        StaticJsonDocument<256> chkDoc;
-        chkDoc["device_id"]   = DEVICE_ID;
-        chkDoc["request_id"]  = chkReqId;
-        chkDoc["device_time"] = chkTime;
-        chkDoc["session_id"]  = sessionId;
-
-        String chkBody;
-        serializeJson(chkDoc, chkBody);
-
-        String chkResp = postHttp("/payment/check", chkBody);
-        if (chkResp.length() > 0) {
-          StaticJsonDocument<512> chkResDoc;
-          if (deserializeJson(chkResDoc, chkResp) == DeserializationError::Ok && (chkResDoc["success"] | false)) {
-            if (chkResDoc["data"]["paid"] | false) {
-              paidSuccess = true;
-              int openComp          = chkResDoc["data"]["compartment"] | compartment;
-              unsigned int openMs   = chkResDoc["data"]["unlock_ms"] | DEFAULT_UNLOCK_MS;
-              unsigned int openTout = chkResDoc["data"]["timeout_sec"] | DEFAULT_DOOR_TIMEOUT_SEC;
-
-              runPickupFlow(openComp, sessionId, durationMin, fee, openMs, openTout);
-              break;
-            }
-          }
-        }
-      }
-      delay(80);
-    }
-
-    if (!paidSuccess) {
-      showStepScreen("HET GIO THANH TOAN", "Giao dich tam dung", "Quet lai the de mo", "");
-      delay(2000);
-    }
+  // 2. LẤY ĐỒ (GỘP PHÍ VÀO VÉ GỬI XE - KHÔNG CẦN CHỜ THANH TOÁN QR):
+  // Quét lại thẻ -> Tìm đúng ngăn đã gửi -> Mở tủ ngay lập tức -> Tính thời gian & phí cộng vào lúc lấy xe!
+  else if (strcmp(action, "PICKUP") == 0 || strcmp(action, "PAYMENT") == 0) {
+    unsigned int openMs   = (unlockMs >= 300) ? unlockMs : DEFAULT_UNLOCK_MS;
+    unsigned int openTout = (timeoutSec > 0) ? timeoutSec : DEFAULT_DOOR_TIMEOUT_SEC;
+    runPickupFlow(compartment, sessionId, durationMin, fee, openMs, openTout);
   }
 }
 
